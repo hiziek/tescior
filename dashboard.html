@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Dashboard — mObywatel</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="/assets/page/panel.css?v=2">
+
+</head>
+<body class="panel-page panel-dashboard">
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="brand-icon">🪪</div>
+    <div>
+      <div class="brand-name">m<span>Obywatel</span></div>
+      <div class="brand-sub">PANEL ZARZĄDZANIA</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span class="role-badge" id="role-badge">UŻYTKOWNIK</span>
+    <div class="admin-btn" id="admin-link" style="display:none" onclick="location.href='/admin'">⚙ Admin</div>
+    <button class="btn-sm primary" onclick="location.href='/generator'">+ Nowa karta</button>
+    <button class="btn-sm" onclick="doLogout()">Wyloguj</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="stats-bar" id="stats-bar" style="display:none">
+    <div class="stat-card">
+      <div class="stat-label">Wszystkie karty</div>
+      <div class="stat-value accent" id="stat-total">0</div>
+    </div>
+    <div class="stat-card" id="stat-limit-card" style="display:none">
+      <div class="stat-label">Limit kart</div>
+      <div class="stat-value" id="stat-limit">∞</div>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <div>
+      <span class="section-title">Wygenerowane karty</span>
+      <span class="section-meta" id="count" style="margin-left:8px"></span>
+    </div>
+  </div>
+  <div id="empty" class="empty">
+    <span class="empty-icon">🪪</span>
+    <p>Brak kart w systemie</p>
+    <small>Kliknij „+ Nowa karta" żeby dodać pierwszą</small>
+  </div>
+  <div class="cards-grid" id="grid"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <div class="modal-icon">🗑</div>
+    <h2>Usuń kartę</h2>
+    <p>Jesteś pewien? Ta operacja jest nieodwracalna i spowoduje trwałe usunięcie karty.</p>
+    <div class="modal-btns">
+      <button class="cancel" onclick="closeModal()">Anuluj</button>
+      <button class="confirm" onclick="confirmDelete()">Usuń kartę</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var session = localStorage.getItem('session');
+var deleteId = null;
+
+if (!session) { location.href = '/login'; }
+
+fetch('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session})})
+.then(r=>r.json()).then(d=>{
+  if(!d.ok){localStorage.removeItem('session');location.href='/login';}
+  if(d.cardLimit !== null){
+    document.getElementById('stat-limit-card').style.display='flex';
+    document.getElementById('stat-limit').textContent = d.cardLimit;
+  }
+});
+
+fetch('/api/cards',{method:'POST',headers:{'Content-Type':'application/json','x-session':session},body:JSON.stringify({session})})
+.then(r=>r.json()).then(d=>{
+  if(!d.ok){location.href='/login';return;}
+  if(d.isAdmin){
+    document.getElementById('admin-link').style.display='flex';
+    var badge = document.getElementById('role-badge');
+    badge.textContent='ADMIN';
+    badge.classList.add('admin-badge');
+  }
+  document.getElementById('stats-bar').style.display='grid';
+  document.getElementById('stat-total').textContent = d.cards.length;
+  document.getElementById('count').textContent = '(' + d.cards.length + ')';
+
+  if(d.cards.length===0){
+    document.getElementById('empty').style.display='block';
+    return;
+  }
+
+  var grid = document.getElementById('grid');
+  d.cards.forEach((c, i) => {
+    var initials = ((c.name||'?')[0]+(c.surname||'?')[0]).toUpperCase();
+    var dob = pad(c.day)+'.'+pad(c.month)+'.'+c.year;
+    var el = document.createElement('div');
+    el.className='card-item';
+    el.id='card-'+c.id;
+    el.style.animationDelay = (i*0.05)+'s';
+    var creatorHtml = (d.isAdmin && c.createdByLogin)
+      ? '<div class="card-creator">👤 ' + esc(c.createdByLogin) + '</div>'
+      : '';
+    el.innerHTML=
+      '<div class="card-top">'+
+      '<div class="card-avatar">'+initials+'</div>'+
+      '<div><div class="card-name">'+esc(c.name)+' '+esc(c.surname)+'</div>'+
+      '<div class="card-id">#'+String(c.id).padStart(4,'0')+'</div></div>'+
+      '</div>'+
+      creatorHtml +
+      '<div class="card-info">Data ur.: <span>'+dob+'</span></div>'+
+      '<div class="card-actions">'+
+      '<button class="copy-btn" onclick="copyLink(\''+c.token+'\')">📋 Link</button>'+
+      '<button class="edit-btn" onclick="location.href=\'/generator?id='+c.id+'\'">✏ Edytuj</button>'+
+      '<button class="del-btn" onclick="askDelete('+c.id+')">🗑 Usuń</button>'+
+      '</div>';
+    grid.appendChild(el);
+  });
+});
+
+function pad(n){return String(n).padStart(2,'0');}
+function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+function copyLink(token){
+  navigator.clipboard.writeText(location.protocol+'//'+location.host+'/id?card_token='+token)
+  .then(()=>toast('Link skopiowany!','ok'))
+  .catch(()=>toast('Błąd kopiowania','err'));
+}
+
+function askDelete(id){deleteId=id;document.getElementById('modal').classList.add('open');}
+function closeModal(){document.getElementById('modal').classList.remove('open');deleteId=null;}
+function confirmDelete(){
+  if(!deleteId)return;
+  fetch('/api/delete-card',{method:'POST',headers:{'Content-Type':'application/json','x-session':session},body:JSON.stringify({session,id:deleteId})})
+  .then(r=>r.json()).then(d=>{
+    if(d.ok){
+      var el=document.getElementById('card-'+deleteId);
+      if(el){el.style.transition='all 0.3s';el.style.opacity='0';el.style.transform='scale(0.9)';setTimeout(()=>el.remove(),300);}
+      var cur = parseInt(document.getElementById('stat-total').textContent);
+      document.getElementById('stat-total').textContent = cur - 1;
+      toast('Karta usunięta','ok');
+    } else toast('Błąd usuwania','err');
+    closeModal();
+  });
+}
+
+function doLogout(){
+  fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session})});
+  localStorage.clear();
+  sessionStorage.clear();
+  location.href='/login';
+}
+
+function toast(msg,type){
+  var t=document.getElementById('toast');
+  t.textContent=msg;t.className='toast show '+(type||'');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+</script>
+</body>
+</html>

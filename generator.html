@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Generator karty</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/page/panel.css?v=2">
+
+</head>
+<body class="panel-page panel-generator">
+<div class="topbar">
+  <div class="topbar-title">m<span>Obywatel</span> &nbsp;<span class="page-sub" id="page-title">Nowa karta</span></div>
+  <div class="topbar-right">
+    <button class="btn-sm" onclick="location.href='/dashboard'">← Dashboard</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="form-section">
+    <h2>Zdjęcie</h2>
+    <div class="photo-upload" id="photoUpload" onclick="document.getElementById('photoInput').click()">
+      <div class="photo-upload-icon">📷</div>
+      <img id="photoPreview" src="" alt="zdjęcie">
+      <div class="photo-upload-text">Kliknij żeby wybrać zdjęcie</div>
+    </div>
+    <input type="file" id="photoInput" accept="image/*" style="display:none">
+  </div>
+
+  <div class="form-section">
+    <h2>Dane osobowe</h2>
+    <div class="two-col">
+      <div class="field"><label>Imię</label><input id="name" placeholder="Jan"></div>
+      <div class="field"><label>Nazwisko</label><input id="surname" placeholder="Kowalski"></div>
+    </div>
+    <div class="field"><label>Nazwisko rodowe</label><input id="familyName" placeholder="Kowalski"></div>
+    <div class="field">
+      <label>Płeć</label>
+      <select id="sex">
+        <option value="M">Mężczyzna (M)</option>
+        <option value="F">Kobieta (F)</option>
+      </select>
+    </div>
+    <div class="field"><label>Obywatelstwo</label><input id="nationality" placeholder="POLSKIE"></div>
+  </div>
+
+  <div class="form-section">
+    <h2>Data urodzenia i PESEL</h2>
+    <div class="three-col">
+      <div class="field"><label>Dzień</label><input id="day" type="number" placeholder="1" min="1" max="31"></div>
+      <div class="field"><label>Miesiąc</label><input id="month" type="number" placeholder="1" min="1" max="12"></div>
+      <div class="field"><label>Rok</label><input id="year" type="number" placeholder="1990"></div>
+    </div>
+    <div class="field"><label>Miejsce urodzenia</label><input id="birthPlace" placeholder="Warszawa"></div>
+    <div class="field"><label>Kraj urodzenia</label><input id="countryOfBirth" placeholder="POLSKA"></div>
+    <div class="field">
+      <label>PESEL</label>
+      <div class="input-with-btn">
+        <input id="pesel" placeholder="90010100000" maxlength="11">
+        <button class="gen-btn" type="button" onclick="generatePesel()">🎲</button>
+      </div>
+      <div class="pesel-hint" id="peselHint"></div>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <h2>Rodzice</h2>
+    <div class="two-col">
+      <div class="field"><label>Imię ojca</label><input id="fathersName" placeholder="Marek"></div>
+      <div class="field"><label>Imię matki</label><input id="mothersName" placeholder="Anna"></div>
+    </div>
+    <div class="two-col">
+      <div class="field"><label>Nazwisko rodowe ojca</label><input id="fathersFamilyName" placeholder="Kowalski"></div>
+      <div class="field"><label>Nazwisko rodowe matki</label><input id="mothersFamilyName" placeholder="Nowak"></div>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <h2>Dane dokumentu</h2>
+    <div class="field">
+      <label>Seria i numer</label>
+      <div class="input-with-btn">
+        <input id="seriesAndNumber" placeholder="AAA000000">
+        <button class="gen-btn" type="button" onclick="generateSeries()">🎲</button>
+      </div>
+    </div>
+    <div class="two-col">
+      <div class="field"><label>Data wydania</label><input id="givenDate" placeholder="01.01.2020"></div>
+      <div class="field"><label>Data ważności</label><input id="expiryDate" placeholder="01.01.2030"></div>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <h2>Adres zameldowania</h2>
+    <div class="field"><label>Adres</label><input id="adress" placeholder="ul. Przykładowa 1, 00-001 Warszawa"></div>
+    <div class="field"><label>Data zameldowania</label><input id="homeDate" placeholder="01.01.2020"></div>
+  </div>
+
+  <button class="save-btn" id="saveBtn" onclick="save()">💾 Zapisz kartę</button>
+
+  <div class="result-box" id="resultBox">
+    <p>✅ Karta zapisana! Skopiuj link dla osoby:</p>
+    <input type="text" id="resultLink" readonly>
+    <button class="copy-link-btn" onclick="copyResult()">📋 Kopiuj link</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var session = localStorage.getItem('session');
+var editId = 0;
+var photoData = null;
+var params = new URLSearchParams(location.search);
+var savedToken = null;
+
+if (!session) { location.href = '/login'; }
+
+if (params.has('id')) {
+  editId = parseInt(params.get('id'));
+  document.getElementById('page-title').textContent = 'Edytuj kartę';
+
+  fetch('/get/card?session='+session+'&id='+editId)
+  .then(r=>r.json()).then(d=>{
+    Object.keys(d).forEach(k=>{
+      var el = document.getElementById(k);
+      if(el) el.value = d[k];
+    });
+  });
+
+  fetch('/images?session='+session+'&id='+editId)
+  .then(r=>r.blob()).then(blob=>{
+    var url = URL.createObjectURL(blob);
+    setPhoto(url, blob);
+  }).catch(()=>{});
+}
+
+document.getElementById('photoInput').addEventListener('change', function(e){
+  var file = e.target.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    setPhoto(ev.target.result, null);
+    photoData = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+function setPhoto(url, blob){
+  var prev = document.getElementById('photoPreview');
+  prev.src = url;
+  document.getElementById('photoUpload').classList.add('loaded');
+  document.getElementById('photoUpload').classList.remove('err');
+  if(!blob) photoData = url;
+  else {
+    var reader = new FileReader();
+    reader.onload = function(ev){ photoData = ev.target.result; };
+    reader.readAsDataURL(blob);
+  }
+}
+
+function generateSeries(){
+  var letters = 'ABCDEFGHIJKLMNOPRSTUWXYZ';
+  var result = '';
+  for(var i=0;i<3;i++) result += letters[Math.floor(Math.random()*letters.length)];
+  for(var i=0;i<6;i++) result += Math.floor(Math.random()*10);
+  document.getElementById('seriesAndNumber').value = result;
+  document.getElementById('seriesAndNumber').classList.remove('err');
+}
+
+function generatePesel(){
+  var day   = parseInt(document.getElementById('day').value);
+  var month = parseInt(document.getElementById('month').value);
+  var year  = parseInt(document.getElementById('year').value);
+  var sex   = document.getElementById('sex').value;
+
+  if(!day || !month || !year || year < 1800 || year > 2299){
+    toast('Najpierw wpisz poprawną datę urodzenia', 'err');
+    return;
+  }
+
+  var m = month;
+  if      (year >= 1800 && year <= 1899) m += 80;
+  else if (year >= 1900 && year <= 1999) m += 0;
+  else if (year >= 2000 && year <= 2099) m += 20;
+  else if (year >= 2100 && year <= 2199) m += 40;
+  else if (year >= 2200 && year <= 2299) m += 60;
+
+  var yy  = String(year).slice(-2).padStart(2,'0');
+  var mm  = String(m).padStart(2,'0');
+  var dd  = String(day).padStart(2,'0');
+
+  var ord = Math.floor(Math.random()*1000);
+  var tenthDigit;
+  if(sex === 'M'){
+    var odds = [1,3,5,7,9];
+    tenthDigit = odds[Math.floor(Math.random()*5)];
+  } else {
+    var evens = [0,2,4,6,8];
+    tenthDigit = evens[Math.floor(Math.random()*5)];
+  }
+  var ordStr = String(ord).padStart(3,'0') + tenthDigit;
+  var base = yy + mm + dd + ordStr;
+
+  var weights = [1,3,7,9,1,3,7,9,1,3];
+  var sum = 0;
+  for(var i=0;i<10;i++) sum += parseInt(base[i]) * weights[i];
+  var check = (10 - (sum % 10)) % 10;
+
+  document.getElementById('pesel').value = base + check;
+  document.getElementById('pesel').classList.remove('err');
+  document.getElementById('peselHint').textContent = '✓ ' + dd+'.'+String(month).padStart(2,'0')+'.'+year + ', ' + (sex==='M'?'mężczyzna':'kobieta');
+}
+
+function save(){
+  var btn = document.getElementById('saveBtn');
+  if(btn.disabled) return;
+
+  var required = ['name','surname','nationality','pesel','seriesAndNumber','expiryDate','givenDate'];
+  var ok = true;
+  required.forEach(id=>{
+    var el = document.getElementById(id);
+    if(!el.value.trim()){el.classList.add('err');ok=false;}
+  });
+
+  var day = document.getElementById('day').value;
+  var month = document.getElementById('month').value;
+  var year = document.getElementById('year').value;
+  if(!day||!month||!year){
+    ['day','month','year'].forEach(id=>document.getElementById(id).classList.add('err'));
+    ok=false;
+  }
+
+  if(!photoData && editId===0){
+    document.getElementById('photoUpload').classList.add('err');
+    ok=false;
+  }
+
+  if(!ok){toast('Wypełnij wszystkie wymagane pola','err');return;}
+
+  var data = {};
+  ['name','surname','familyName','sex','nationality','birthPlace','countryOfBirth','pesel','fathersName','mothersName','fathersFamilyName','mothersFamilyName','seriesAndNumber','givenDate','expiryDate','adress','homeDate'].forEach(id=>{
+    data[id] = document.getElementById(id).value;
+  });
+  data.day = parseInt(day);
+  data.month = parseInt(month);
+  data.year = parseInt(year);
+  if(photoData) data.image = photoData;
+
+  btn.disabled=true; btn.textContent='Zapisywanie...';
+
+  fetch('/api/submit',{method:'POST',headers:{'Content-Type':'application/json','x-session':session},body:JSON.stringify({session,id:editId,data})})
+  .then(r=>r.json()).then(d=>{
+    btn.disabled=false; btn.textContent='💾 Zapisz kartę';
+    if(d.ok){
+      toast('Zapisano!','ok');
+      if(d.token){
+        savedToken = d.token;
+        var link = location.protocol+'//'+location.host+'/id?card_token='+d.token;
+        document.getElementById('resultLink').value = link;
+        document.getElementById('resultBox').classList.add('show');
+      } else {
+        setTimeout(()=>location.href='/dashboard', 800);
+      }
+    } else toast(d.error||'Błąd zapisu','err');
+  })
+  .catch(()=>{btn.disabled=false;btn.textContent='💾 Zapisz kartę';toast('Błąd połączenia','err');});
+}
+
+function copyResult(){
+  navigator.clipboard.writeText(document.getElementById('resultLink').value).then(()=>toast('Link skopiowany!','ok'));
+}
+
+document.querySelectorAll('input,select').forEach(el=>{
+  el.addEventListener('input',()=>el.classList.remove('err'));
+});
+
+function toast(msg,type){
+  var t=document.getElementById('toast');
+  t.textContent=msg;t.className='toast show '+(type||'');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Logowanie — mObywatel Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="/assets/page/panel.css?v=2">
+
+</head>
+<body class="panel-page panel-login">
+<div class="card">
+  <div class="logo">
+    <div class="logo-mark">🪪</div>
+    <h1>m<span>Obywatel</span></h1>
+    <p>PANEL ZARZĄDZANIA</p>
+  </div>
+  <div class="error" id="err"></div>
+  <div class="field">
+    <label>Login</label>
+    <input type="text" id="login" placeholder="Wpisz login" autocomplete="username">
+  </div>
+  <div class="field">
+    <label>Hasło</label>
+    <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+  </div>
+  <button class="btn" id="btn" onclick="doLogin()">Zaloguj się</button>
+  <div class="divider"></div>
+  <div class="footer-text">Bezpieczne połączenie · SSL</div>
+</div>
+<script>
+var loginInput = document.getElementById('login');
+var passInput = document.getElementById('password');
+var errBox = document.getElementById('err');
+var btn = document.getElementById('btn');
+
+var sess = localStorage.getItem('session');
+if (sess) {
+  fetch('/api/me', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:sess})})
+  .then(r=>r.json()).then(d=>{if(d.ok) location.href='/dashboard';});
+}
+
+[loginInput, passInput].forEach(el => {
+  el.addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  el.addEventListener('input', () => { el.classList.remove('err'); errBox.classList.remove('show'); });
+});
+
+function doLogin(){
+  var login = loginInput.value.trim();
+  var pass = passInput.value;
+  if(!login){loginInput.classList.add('err');return;}
+  if(!pass){passInput.classList.add('err');return;}
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Logowanie...';
+  fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login,password:pass})})
+  .then(r=>r.json())
+  .then(d=>{
+    btn.disabled=false; btn.innerHTML='Zaloguj się';
+    if(d.ok){
+      localStorage.setItem('session', d.token);
+      localStorage.setItem('role', d.role);
+      location.href='/dashboard';
+    } else {
+      errBox.textContent = d.error || 'Błąd logowania';
+      errBox.classList.add('show');
+    }
+  })
+  .catch(()=>{btn.disabled=false;btn.innerHTML='Zaloguj się';errBox.textContent='Błąd połączenia z serwerem';errBox.classList.add('show');});
+}
+</script>
+</body>
+</html>

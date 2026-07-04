@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Panel Admina — mObywatel</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="/assets/page/panel.css?v=2">
+
+</head>
+<body class="panel-page panel-admin">
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="brand-icon">🪪</div>
+    <div>
+      <div class="brand-name">m<span>Obywatel</span></div>
+      <div class="brand-sub">PANEL ADMINA</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <button class="btn-sm" onclick="location.href='/dashboard'">← Dashboard</button>
+    <button class="btn-sm" onclick="doLogout()">Wyloguj</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="section">
+    <div class="section-head">
+      <h2>👥 Użytkownicy <span class="section-head-meta" id="user-count"></span></h2>
+      <button class="btn-sm primary" onclick="toggleAddForm()">+ Dodaj</button>
+    </div>
+    <div class="add-form" id="addForm">
+      <div class="form-row">
+        <input type="text" id="newLogin" placeholder="Login" autocomplete="off">
+        <input type="password" id="newPass" placeholder="Hasło" autocomplete="off">
+        <button onclick="addUser()">Dodaj</button>
+      </div>
+    </div>
+    <div class="user-list" id="userList">
+      <div class="empty-users">Ładowanie użytkowników...</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <h2>🃏 Wszystkie karty <span class="section-head-meta" id="card-count"></span></h2>
+      <button class="btn-sm" onclick="toggleCards()">Pokaż / Ukryj</button>
+    </div>
+    <div id="cardListWrap" style="display:none">
+      <div class="user-list" id="cardList">
+        <div class="empty-users">Kliknij „Pokaż / Ukryj", aby załadować karty.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Delete modal -->
+<div class="modal-bg" id="delModal">
+  <div class="modal">
+    <div class="modal-icon danger">🗑</div>
+    <h2>Usuń użytkownika</h2>
+    <p>Użytkownik straci dostęp do panelu. Jego karty pozostaną w systemie.</p>
+    <div class="modal-btns">
+      <button class="cancel" onclick="closeModals()">Anuluj</button>
+      <button class="confirm-del" onclick="confirmDelete()">Usuń</button>
+    </div>
+  </div>
+</div>
+
+<!-- Password modal -->
+<div class="modal-bg" id="pwdModal">
+  <div class="modal">
+    <div class="modal-icon info">🔑</div>
+    <h2>Zmień hasło</h2>
+    <p>Ustaw nowe hasło dla tego użytkownika.</p>
+    <div class="modal-field">
+      <label>Nowe hasło</label>
+      <input type="password" id="newPwdInput" placeholder="Wpisz nowe hasło">
+    </div>
+    <div class="modal-btns">
+      <button class="cancel" onclick="closeModals()">Anuluj</button>
+      <button class="save" onclick="confirmPwd()">Zapisz</button>
+    </div>
+  </div>
+</div>
+
+<!-- Permissions modal -->
+<div class="modal-bg" id="permsModal">
+  <div class="modal">
+    <div class="modal-icon warning">⚙️</div>
+    <h2>Uprawnienia i ustawienia</h2>
+    <p style="margin-bottom:14px">Zarządzaj uprawnieniami i limitami dla tego użytkownika.</p>
+
+    <div class="modal-field">
+      <label>Rola</label>
+      <select id="permsRole">
+        <option value="user">Użytkownik</option>
+        <option value="admin">Administrator</option>
+      </select>
+    </div>
+
+    <div class="modal-field">
+      <label>Limit kart (puste = brak limitu)</label>
+      <input type="number" id="permsLimit" placeholder="np. 10" min="0">
+    </div>
+
+    <div class="modal-field">
+      <label>Uprawnienia</label>
+      <div class="perms-grid">
+        <div class="perm-toggle active" id="perm-create" onclick="togglePerm('create')">
+          <span class="perm-icon">➕</span>
+          <span class="perm-label">Tworzenie</span>
+        </div>
+        <div class="perm-toggle active" id="perm-edit" onclick="togglePerm('edit')">
+          <span class="perm-icon">✏️</span>
+          <span class="perm-label">Edycja</span>
+        </div>
+        <div class="perm-toggle active" id="perm-delete" onclick="togglePerm('delete')">
+          <span class="perm-icon">🗑️</span>
+          <span class="perm-label">Usuwanie</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-btns">
+      <button class="cancel" onclick="closeModals()">Anuluj</button>
+      <button class="save" onclick="savePerms()">Zapisz</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var session = localStorage.getItem('session');
+var deleteUserId = null;
+var pwdUserId = null;
+var permsUserId = null;
+var usersDataMap = {};
+
+if (!session) { location.href = '/login'; }
+
+fetch('/api/me',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session})})
+.then(r=>r.json()).then(d=>{
+  if(!d.ok||d.role!=='admin'){location.href='/dashboard';}
+  else loadUsers();
+});
+
+function loadUsers(){
+  fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json','x-session':session},body:JSON.stringify({session})})
+  .then(r=>r.json()).then(d=>{
+    if(!d.ok){toast('Błąd ładowania','err');return;}
+    document.getElementById('user-count').textContent = d.users.length + ' użytkowników';
+    var list = document.getElementById('userList');
+    if(d.users.length===0){list.innerHTML='<div class="empty-users">Brak użytkowników.</div>';return;}
+    list.innerHTML = d.users.map(u=>{
+      var isAdmin = u.role==='admin';
+      var initials = (u.login[0]||'?').toUpperCase();
+      var date = u.createdAt ? new Date(u.createdAt).toLocaleDateString('pl-PL') : '';
+      var limitBadge = (u.cardLimit !== null && u.cardLimit !== undefined)
+        ? '<span class="badge limit">limit: '+u.cardLimit+'</span>' : '';
+      var perms = u.permissions || {canCreate:true,canEdit:true,canDelete:true};
+      var permsStr = [
+        perms.canCreate?'➕':'',
+        perms.canEdit?'✏️':'',
+        perms.canDelete?'🗑️':''
+      ].filter(Boolean).join(' ');
+
+      usersDataMap[u.id] = { role: u.role, cardLimit: u.cardLimit, permissions: perms };
+
+      return '<div class="user-item">'+
+        '<div class="user-left">'+
+        '<div class="user-avatar '+(isAdmin?'admin-av':'')+'">'+initials+'</div>'+
+        '<div class="user-info">'+
+          '<div class="user-login">'+esc(u.login)+'</div>'+
+          '<div class="user-meta">'+(date?'od '+date+' · ':'')+u.cardCount+' kart · '+permsStr+'</div>'+
+        '</div>'+
+        '</div>'+
+        '<div class="user-right">'+
+        '<span class="badge '+(isAdmin?'admin':'user')+'">'+(isAdmin?'ADMIN':'USER')+'</span>'+
+        limitBadge+
+        '<button class="icon-btn perms" onclick="askPerms('+u.id+')">⚙</button>'+
+        '<button class="icon-btn pwd" onclick="askPwd('+u.id+')">🔑</button>'+
+        (isAdmin?'':'<button class="icon-btn del" onclick="askDel('+u.id+')">🗑</button>')+
+        '</div>'+
+        '</div>';
+    }).join('');
+  });
+}
+
+function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+function toggleAddForm(){
+  document.getElementById('addForm').classList.toggle('open');
+}
+
+function addUser(){
+  var login = document.getElementById('newLogin').value.trim();
+  var pass = document.getElementById('newPass').value;
+  if(!login||!pass){toast('Wypełnij login i hasło','err');return;}
+  fetch('/api/users/add',{method:'POST',headers:{'Content-Type':'application/json','x-session':session},body:JSON.stringify({session,login,password:pass})})
+  .then(r=>r.json()).then(d=>{
+    if(d.ok){
+      toast('Użytkownik dodany!','ok');
+      document.getElementById('newLogin').value='';
+      document.getElementById('newPass').value='';
+      document.getElementById('addForm').classList.remove('open');
+      loadUsers();
+    } else toast(d.error||'Błąd','err');
+  });
+}
+
+function askDel(id){deleteUserId=id;document.getElementById('delModal').classList.add('open');}
+function askPwd(id){pwdUserId=id;document.getElementById('newPwdInput').value='';document.getElementById('pwdModal').classList.add('open');}
+
+function askPerms(id){
+  var u = usersDataMap[id];
+  if(!u) return;
+  permsUserId=id;
+  document.getElementById('permsRole').value = u.role;
+  document.getElementById('permsLimit').value = (u.cardLimit!==null&&u.cardLimit!==undefined) ? u.cardLimit : '';
+  setPermToggle('create', u.permissions.canCreate!==false);
+  setPermToggle('edit', u.permissions.canEdit!==false);
+  setPermToggle('delete', u.permissions.canDelete!==false);
+  document.getElementById('permsModal').classList.add('open');
+}
+
+function setPermToggle(name, val){
+  var el = document.getElementById('perm-'+name);
+  if(val) el.classList.add('active'); else el.classList.remove('active');
+}
+function togglePerm(name){
+  var el = document.getElementById('perm-'+name);
+  el.classList.toggle('active');
+}
+
+function closeModals(){document.querySelectorAll('.modal-bg').forEach(m=>m.classList.remove('open'));deleteUserId=null;pwdUserId=null;permsUserId=null;}
+
+function confirmDelete(){
+  if(!deleteUserId)return;
+  fetch('/api/users/delete',{method:'POST',headers:{'Content-Type':'application/json','x-session':session},body:JSON.stringify({session,id:deleteUserId})})
+  .then(r=>r.json()).then(d=>{
+    if(d.ok){toast('Użytkownik usunięty','ok');loadUsers();}
+    else toast(d.error||'Błąd','err');
+    closeModals();
+  });
+}
+
+function confirmPwd(){
+  if(!pwdUserId)return;
+  var pwd = document.getElementById('newPwdInput').value;
+  if(!pwd){toast('Wpisz hasło','err');return;}
+  fetch('/api/users/password',{method:'POST',headers:{'Content-Type':'application/json','x-session':session},body:JSON.stringify({session,id:pwdUserId,password:pwd})})
+  .then(r=>r.json()).then(d=>{
+    if(d.ok)toast('Hasło zmienione','ok');
+    else toast(d.error||'Błąd','err');
+    closeModals();
+  });
+}
+
+function savePerms(){
+  if(!permsUserId)return;
+  var role = document.getElementById('permsRole').value;
+  var limitVal = document.getElementById('permsLimit').value.trim();
+  var cardLimit;
+  if(limitVal==='') {
+    cardLimit = null;
+  } else {
+    var parsed = parseInt(limitVal);
+    cardLimit = isNaN(parsed) ? null : parsed;
+  }
+  var permissions = {
+    canCreate: document.getElementById('perm-create').classList.contains('active'),
+    canEdit: document.getElementById('perm-edit').classList.contains('active'),
+    canDelete: document.getElementById('perm-delete').classList.contains('active')
+  };
+  fetch('/api/users/permissions',{method:'POST',headers:{'Content-Type':'application/json','x-session':session},body:JSON.stringify({session,id:permsUserId,role,cardLimit,permissions})})
+  .then(r=>r.json()).then(d=>{
+    if(d.ok){toast('Zapisano uprawnienia','ok');loadUsers();}
+    else toast(d.error||'Błąd','err');
+    closeModals();
+  });
+}
+
+var cardsLoaded = false;
+function toggleCards(){
+  var wrap = document.getElementById('cardListWrap');
+  var visible = wrap.style.display !== 'none';
+  wrap.style.display = visible ? 'none' : 'block';
+  if(!visible && !cardsLoaded) loadAllCards();
+}
+function loadAllCards(){
+  fetch('/api/admin/cards',{method:'POST',headers:{'Content-Type':'application/json','x-session':session},body:JSON.stringify({session})})
+  .then(r=>r.json()).then(d=>{
+    if(!d.ok){document.getElementById('cardList').innerHTML='<div class="empty-users">Błąd ładowania kart.</div>';return;}
+    cardsLoaded = true;
+    document.getElementById('card-count').textContent = d.cards.length + ' kart';
+    var list = document.getElementById('cardList');
+    if(d.cards.length===0){list.innerHTML='<div class="empty-users">Brak kart w systemie.</div>';return;}
+    list.innerHTML = d.cards.map(c=>{
+      var date = c.createdAt ? new Date(c.createdAt).toLocaleDateString('pl-PL') : '—';
+      var dob = c.day+'.'+c.month+'.'+c.year;
+      return '<div class="user-item">'+
+        '<div class="user-left">'+
+        '<div class="user-avatar" style="font-size:11px;">ID</div>'+
+        '<div class="user-info">'+
+          '<div class="user-login">'+esc(c.name)+' '+esc(c.surname)+'</div>'+
+          '<div class="user-meta">ur. '+dob+' · '+(c.createdByLogin||'—')+' · '+date+'</div>'+
+        '</div>'+
+        '</div>'+
+        '<div class="user-right">'+
+        '<span class="badge user">#'+c.id+'</span>'+
+        '<button class="icon-btn del" onclick="adminDeleteCard('+c.id+')">🗑</button>'+
+        '</div>'+
+        '</div>';
+    }).join('');
+  });
+}
+function adminDeleteCard(id){
+  if(!confirm('Usunąć kartę #'+id+'?')) return;
+  fetch('/api/delete-card',{method:'POST',headers:{'Content-Type':'application/json','x-session':session},body:JSON.stringify({session,id})})
+  .then(r=>r.json()).then(d=>{
+    if(d.ok){toast('Karta usunięta','ok');cardsLoaded=false;loadAllCards();loadUsers();}
+    else toast(d.error||'Błąd','err');
+  });
+}
+
+function doLogout(){
+  fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session})});
+  localStorage.clear();
+  sessionStorage.clear();
+  location.href='/login';
+}
+
+function toast(msg,type){
+  var t=document.getElementById('toast');
+  t.textContent=msg; t.className='toast show '+(type||'');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+</script>
+</body>
+</html>
