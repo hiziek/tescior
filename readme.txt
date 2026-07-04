@@ -1,0 +1,1 @@
+wszystkozajebane<3

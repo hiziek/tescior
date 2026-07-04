@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: softwarenajs-main
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_LOGIN
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
